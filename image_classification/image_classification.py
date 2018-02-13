@@ -19,7 +19,7 @@ from __future__ import division
 
 import argparse, time
 import logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(levelname)s - %(name)s:  %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
 
 import mxnet as mx
 from mxnet import gluon
@@ -41,6 +41,8 @@ parser.add_argument('--epochs', type=int, default=3,
                     help='number of training epochs.')
 parser.add_argument('--lr', type=float, default=0.01,
                     help='learning rate. default is 0.01.')
+parser.add_argument('-momentum', type=float, default=0.9,
+                    help='momentum value for optimizer, default is 0.9.')
 parser.add_argument('--wd', type=float, default=0.0001,
                     help='weight decay rate. default is 0.0001.')
 parser.add_argument('--seed', type=int, default=123,
@@ -63,6 +65,7 @@ parser.add_argument('--log-interval', type=int, default=50, help='Number of batc
 opt = parser.parse_args()
 
 print(opt)
+logging.info(opt)
 
 mx.random.seed(opt.seed)
 
@@ -121,8 +124,8 @@ def test(ctx):
 def train(epochs, ctx):
     if isinstance(ctx, mx.Context):
         ctx = [ctx]
-    net.initialize(mx.init.Xavier(magnitude=2.24), ctx=ctx)
-    trainer = gluon.Trainer(net.collect_params(), 'sgd', {'learning_rate': opt.lr, 'wd': opt.wd},
+    net.initialize(mx.init.Xavier(magnitude=2), ctx=ctx)
+    trainer = gluon.Trainer(net.collect_params(), 'sgd', {'learning_rate': opt.lr, 'wd': opt.wd, 'momentum': opt.momentum},
                             kvstore = opt.kvstore)
     metric = mx.metric.Accuracy()
     loss = gluon.loss.SoftmaxCrossEntropyLoss()
@@ -175,6 +178,7 @@ if __name__ == '__main__':
             kvstore=opt.kvstore,
             batch_end_callback=mx.callback.Speedometer(batch_size, opt.log_interval)
         )
+        mod.save_params('image-classifier-%s-%d-final.params'%(opt.model, opt.epochs))
     else:
         if opt.mode == 'hybrid':
             net.hybridize()
