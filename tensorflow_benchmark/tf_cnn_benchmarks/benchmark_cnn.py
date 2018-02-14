@@ -85,7 +85,7 @@ _DEFAULT_PARAMS = {
                    'number of groups of batches processed in the image '
                    'producer.'),
     'num_batches':
-        _ParamSpec('integer', 100, 'number of batches to run, excluding '
+        _ParamSpec('integer', 0, 'number of batches to run, excluding '
                    'warmup'),
     'num_warmup_batches':
         _ParamSpec('integer', None, 'number of batches to run before timing'),
@@ -207,6 +207,9 @@ _DEFAULT_PARAMS = {
                    'The TensorFlow random seed. Useful for debugging NaNs, as '
                    'this can be set to various values to see if the NaNs '
                    'depend on the seed.'),
+    'target_accuracy':
+        _ParamSpec('float', 1,
+                   'Target accuracy'),
 
     # Performance tuning parameters.
     'winograd_nonfused':
@@ -551,7 +554,7 @@ def benchmark_one_step(sess,
     trace = timeline.Timeline(step_stats=run_metadata.step_stats)
     with gfile.Open(trace_filename, 'w') as trace_file:
       trace_file.write(trace.generate_chrome_trace_format(show_memory=True))
-  return summary_str
+  return summary_str, float(results['top_1_accuracy'])
 
 
 def get_perf_timing_str(batch_size, step_train_times, scale=1):
@@ -649,7 +652,8 @@ class BenchmarkCNN(object):
     self.model = model_config.get_model_config(self.params.model, self.dataset)
     self.trace_filename = self.params.trace_file
     self.data_format = self.params.data_format
-    self.num_batches = self.params.num_batches
+    self.num_batches = self.params.num_batches if self.params.num_batches > 0 else 99999999
+    self.target_accuracy = self.params.target_accuracy
     autotune_threshold = self.params.autotune_threshold if (
         self.params.autotune_threshold) else 1
     min_autotune_warmup = 5 * autotune_threshold * autotune_threshold
@@ -1126,6 +1130,7 @@ class BenchmarkCNN(object):
       else:
         done_fn = global_step_watcher.done
       loop_start_time = time.time()
+      acc_list = []
       while not done_fn():
         if local_step == 0:
           log_fn('Done warm up')
@@ -1147,7 +1152,7 @@ class BenchmarkCNN(object):
           fetch_summary = summary_op
         else:
           fetch_summary = None
-        summary_str = benchmark_one_step(
+        summary_str, acc = benchmark_one_step(
             sess, fetches, local_step,
             self.batch_size * (len(self.worker_hosts)
                                if self.single_session else 1),
@@ -1156,6 +1161,14 @@ class BenchmarkCNN(object):
         if summary_str is not None and is_chief:
           sv.summary_computed(sess, summary_str)
         local_step += 1
+        acc_list.append(acc)
+        if len(acc_list) >= 10:
+            min_acc = 0
+            for i in range(10):
+                min_acc += acc_list[len(acc_list) - 1 - i]
+            if min_acc/10 >= self.target_accuracy:
+                global_step_watcher.end_at_global_step = local_step
+                break
       loop_end_time = time.time()
       # Waits for the global step to be done, regardless of done_fn.
       if global_step_watcher:
@@ -1176,6 +1189,8 @@ class BenchmarkCNN(object):
 
       log_fn('-' * 64)
       log_fn('total images/sec: %.2f' % images_per_sec)
+      log_fn('-' * 64)
+      log_fn('total time: %.2f sec' % elapsed_time)
       log_fn('-' * 64)
       image_producer.done()
       if is_chief:
