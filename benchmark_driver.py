@@ -6,7 +6,8 @@ import re
 import json
 from ast import literal_eval
 import logging
-logging.basicConfig(level=logging.INFO)
+import time
+logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(levelname)s - %(name)s: \t%(message)s", datefmt="%Y-%m-%d %H:%M:%S")
 
 try:
     import ConfigParser
@@ -21,8 +22,8 @@ from utils.errors import MetricComputeMethodError, MetricPatternError
 
 
 CONFIG_TEMPLATE_DIR = './task_config_template.cfg'
-CONFIG_DIR = './task_config.cfg'
-RESULT_FILE_PATH = './dlbenchmark_result.json'
+CONFIG_DIR = './task_config'
+RESULT_FILE_PATH = './dlbenchmark_result'
 NUMERIC_PATTERN = "(\d+\.\d+|\d+)"
 
 
@@ -118,8 +119,9 @@ def benchmark(command_to_execute, metric_patterns,
         name of the framework
     :return:
     """
-    log_file_location = task_name + ".log"
-    log_file = open(log_file_location, 'w')
+    log_file_location = task_name + '_' + time.strftime("%Y-%m-%d_%H-%M-%S") + ".log"
+
+    log_file = open(log_file_location, 'w', 1)
     logging.info("Executing Command: %s" % command_to_execute)
 
     cpu_gpu_memory_usage = {}
@@ -156,9 +158,10 @@ def benchmark(command_to_execute, metric_patterns,
         update_metric_map[map_key] = result.metric_map[metric]
     logging.info(update_metric_map)
     result.metric_map = update_metric_map
-    result.save_to(RESULT_FILE_PATH)
+    RESULT_FILE_FULL_PATH = RESULT_FILE_PATH + '_' + selected_task + '_' + time.strftime("%Y-%m-%d_%H-%M-%S") + '.json'
+    result.save_to(RESULT_FILE_FULL_PATH)
     # clean up
-    os.remove(log_file_location)
+    # os.remove(log_file_location)
 
 
 if __name__ == '__main__':
@@ -168,11 +171,12 @@ if __name__ == '__main__':
     parser.add_argument('--num-gpus', type=int, help='Numbers of gpus. e.g. --num-gpus 8')
     parser.add_argument('--epochs', type=int, help='Numbers of epochs for training. e.g. --epochs 20')
     parser.add_argument('--metrics-suffix', type=str, help='Metrics suffix e.g. --metrics-suffix daily')
+    parser.add_argument('--batch-size', type=int, help='Training batch size per device (CPU/GPU).')
     args = parser.parse_args()
 
     # modify the template config file and generate the user defined config file.
-    cfg_process.generate_cfg(CONFIG_TEMPLATE_DIR, CONFIG_DIR, **vars(args))
-    config.read(CONFIG_DIR)
+    CONFIG_FULL_PATH = cfg_process.generate_cfg(CONFIG_TEMPLATE_DIR, CONFIG_DIR, **vars(args))
+    config.read(CONFIG_FULL_PATH)
 
     # the user defined config file should only have one task
     selected_task = config.sections()[0]
@@ -194,4 +198,4 @@ if __name__ == '__main__':
     )
 
     # clean up
-    os.remove(CONFIG_DIR)
+    os.remove(CONFIG_FULL_PATH)
