@@ -171,6 +171,7 @@ if __name__ == '__main__':
     parser.add_argument('--num-gpus', type=int, help='Numbers of gpus. e.g. --num-gpus 8')
     parser.add_argument('--epochs', type=int, help='Numbers of epochs for training. e.g. --epochs 20')
     parser.add_argument('--metrics-suffix', type=str, help='Metrics suffix e.g. --metrics-suffix daily')
+    parser.add_argument('--batch-size', type=int, help='Training batch size per device (CPU/GPU).')
     args = parser.parse_args()
 
     # modify the template config file and generate the user defined config file.
